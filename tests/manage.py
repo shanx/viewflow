@@ -4,6 +4,8 @@ import sys
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tests.settings")
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+    sys.path.append(BASE_DIR)
 
     from django.core.management import execute_from_command_line
 

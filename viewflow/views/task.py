@@ -1,5 +1,4 @@
-from urllib.parse import quote as urlquote
-
+from urllib import quote as urlquote
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect

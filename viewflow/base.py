@@ -9,6 +9,7 @@ from django.conf.urls import include, url
 from . import flow, lock, models, forms
 from .compat import get_containing_app_data
 from .flow.base import ThisObject
+from six import with_metaclass
 
 this = flow.This()
 
@@ -136,18 +137,19 @@ class FlowMetaClass(type):
                 .rstrip('Flow')
 
         # view process permission
-        process_options = new_class.process_cls._meta
-        if hasattr(process_options, 'default_permissions'):
-            # django 1.7
-            if 'view' not in process_options.default_permissions:
-                process_options.default_permissions += ('view', )
-        else:
-            # django 1.6
-            permission = ('view_{}'.format(process_options.model_name),
-                          'View {}'.format(process_options.model_name))
+        if hasattr(new_class, 'process_cls'):
+            process_options = new_class.process_cls._meta
+            if hasattr(process_options, 'default_permissions'):
+                # django 1.7
+                if 'view' not in process_options.default_permissions:
+                    process_options.default_permissions += ('view', )
+            else:
+                # django 1.6
+                permission = ('view_{}'.format(process_options.model_name),
+                              'View {}'.format(process_options.model_name))
 
-            if permission not in process_options.permissions:
-                process_options.permissions.append(permission)
+                if permission not in process_options.permissions:
+                    process_options.permissions.append(permission)
 
         # done flow setup
         for name, node in nodes.items():
@@ -156,7 +158,7 @@ class FlowMetaClass(type):
         return new_class
 
 
-class Flow(object, metaclass=FlowMetaClass):
+class Flow(with_metaclass(FlowMetaClass)):
     """
     Base class for flow definition
 

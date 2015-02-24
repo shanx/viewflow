@@ -2,7 +2,7 @@ from django.db import models
 from django.utils.module_loading import import_by_path
 from .compat import get_app_package, get_containing_app_data
 from .token import Token
-
+from six import with_metaclass
 
 def import_task_by_ref(task_strref):
     """
@@ -22,7 +22,7 @@ def get_task_ref(flow_task):
     return "{}/{}.{}.{}".format(app_label, subpath, flow_task.flow_cls.__name__, flow_task.name)
 
 
-class FlowReferenceField(models.CharField, metaclass=models.SubfieldBase):
+class FlowReferenceField(with_metaclass(models.SubfieldBase, models.CharField)):
     description = """Flow class reference field,
     stores flow as app_label/flows.FlowName> to
     avoid possible collisions with app name changes"""
@@ -32,7 +32,7 @@ class FlowReferenceField(models.CharField, metaclass=models.SubfieldBase):
         super(FlowReferenceField, self).__init__(*args, **kwargs)
 
     def to_python(self, value):
-        if isinstance(value, str) and value:
+        if isinstance(value, (str, unicode)) and value:
             app_label, flow_path = value.split('/')
             return import_by_path('{}.{}'.format(get_app_package(app_label), flow_path))
         return value
@@ -57,20 +57,20 @@ class FlowReferenceField(models.CharField, metaclass=models.SubfieldBase):
         return self.get_prep_value(value)
 
 
-class TaskReferenceField(models.CharField, metaclass=models.SubfieldBase):
+class TaskReferenceField(with_metaclass(models.SubfieldBase, models.CharField)):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('max_length', 150)
         super(TaskReferenceField, self).__init__(*args, **kwargs)
 
     def to_python(self, value):
-        if isinstance(value, str) and value:
+        if isinstance(value, (str, unicode)) and value:
             return import_task_by_ref(value)
         return value
 
     def get_prep_value(self, value):
         if value is None:
             return None
-        elif not isinstance(value, str):
+        elif not isinstance(value, (str, unicode)):
             return get_task_ref(value)
         return super(TaskReferenceField, self).get_prep_value(value)
 
@@ -79,7 +79,7 @@ class TaskReferenceField(models.CharField, metaclass=models.SubfieldBase):
         return self.get_prep_value(value)
 
 
-class TokenField(models.CharField, metaclass=models.SubfieldBase):
+class TokenField(with_metaclass(models.SubfieldBase, models.CharField)):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('max_length', 150)
         if 'default' in kwargs:
@@ -89,12 +89,12 @@ class TokenField(models.CharField, metaclass=models.SubfieldBase):
         super(TokenField, self).__init__(*args, **kwargs)
 
     def to_python(self, value):
-        if isinstance(value, str) and value:
+        if isinstance(value, (str, unicode)) and value:
             return Token(value)
         return value
 
     def get_prep_value(self, value):
-        if not isinstance(value, str):
+        if not isinstance(value, (str, unicode)):
             return value.token
         return super(TokenField, self).get_prep_value(value)
 

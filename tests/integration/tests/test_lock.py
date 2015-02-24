@@ -1,7 +1,11 @@
 import time
 import unittest
 import threading
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
+
 
 from django.db import connection
 from django.test import skipUnlessDBFeature

@@ -159,6 +159,10 @@ http://kmmbvnr.github.io/django-viewflow/
 
 More examples are available in the `tests/examples` directory.
 
+Fork Notes
+==========
+This fork enables viewflow to work with Python 2.7, tox tests are successfully executed and succeeded.
+
 
 License
 =======

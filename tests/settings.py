@@ -14,6 +14,10 @@ ALLOWED_HOSTS = ['examples.viewflow.io', '127.0.0.1']
 
 # Application definition
 INSTALLED_APPS = (
+    # development
+    'template_debug',
+    # django apps
+    'material',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -22,7 +26,6 @@ INSTALLED_APPS = (
     'django.contrib.staticfiles',
     # viewflow
     'viewflow',
-    'viewform',
     # Tests
     'tests.unit',
     'tests.integration',
@@ -41,6 +44,11 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 )
 
+if django.VERSION >= (1, 7):
+    MIDDLEWARE_CLASSES += (
+        'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
+    )
+
 ROOT_URLCONF = 'tests.urls'
 
 
@@ -54,8 +62,17 @@ if not DATABASES['default']:
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': os.path.join(BASE_DIR, 'db{}{}.sqlite3'.format(django.VERSION[0], django.VERSION[1])),
-        'TEST_NAME': os.path.join(BASE_DIR, 'db{}{}_test.sqlite3'.format(django.VERSION[0], django.VERSION[1]))
     }
+
+if django.VERSION >= (1, 7):
+    DATABASES['default']['TEST'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db{}{}_test.sqlite3'.format(django.VERSION[0], django.VERSION[1]))
+    }
+else:
+    DATABASES['default']['TEST_NAME'] = \
+        os.path.join(BASE_DIR, 'db{}{}_test.sqlite3'.format(django.VERSION[0], django.VERSION[1]))
+
 
 
 # Internationalization
@@ -113,8 +130,16 @@ JENKINS_TASKS = (
     'django_jenkins.tasks.run_sloccount',
 )
 
+# shortcut for development
+from django.template.base import add_to_builtins
+add_to_builtins('template_debug.templatetags.debug_tags')
 
 try:
     from tests.local_settings import *  # NOQA
 except ImportError:
     pass
+
+
+# import warnings
+# warnings.filterwarnings("ignore",category=DeprecationWarning)
+# warnings.filterwarnings('error')

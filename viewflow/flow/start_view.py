@@ -63,7 +63,7 @@ class ManagedStartViewActivation(StartViewActivation):
     management_form_cls = None
 
     def __init__(self, **kwargs):
-        super(StartViewActivation, self).__init__(**kwargs)
+        super(ManagedStartViewActivation, self).__init__(**kwargs)
         self.management_form = None
         self.management_form_cls = kwargs.pop('management_form_cls', None)
 
@@ -93,6 +93,8 @@ class ManagedStartViewActivation(StartViewActivation):
 class BaseStart(base.TaskDescriptionMixin,
                 base.NextNodeMixin,
                 base.DetailsViewMixin,
+                base.UndoViewMixin,
+                base.CancelViewMixin,
                 base.Event,
                 base.ViewArgsMixin):
     """
@@ -136,7 +138,9 @@ class BaseStart(base.TaskDescriptionMixin,
         return urls
 
 
-class Start(base.PermissionMixin, BaseStart):
+class Start(base.PermissionMixin,
+            base.ActivateNextMixin,
+            BaseStart):
     """
     Start process event
 
@@ -193,8 +197,7 @@ class Start(base.PermissionMixin, BaseStart):
                 url_name = '{}:{}'.format(self.flow_cls.instance.namespace, self.name)
                 return reverse(url_name)
 
-        if url_type in ['details', 'guess']:
-            return super(Start, self).get_task_url(task, url_type=url_type, **kwargs)
+        return super(Start, self).get_task_url(task, url_type=url_type, **kwargs)
 
     def can_execute(self, user, task=None):
         if task and task.status != STATUS.NEW:
@@ -203,10 +206,11 @@ class Start(base.PermissionMixin, BaseStart):
         from django.contrib.auth import get_user_model
 
         if self._owner:
-            if callable(self._owner) and self._owner(user):
-                return True
-            owner = get_user_model()._default_manager.get(**self._owner)
-            return owner == user
+            if callable(self._owner):
+                return self._owner(user)
+            else:
+                owner = get_user_model()._default_manager.get(**self._owner)
+                return owner == user
 
         elif self._owner_permission:
             if callable(self._owner_permission) and self._owner_permission(user):

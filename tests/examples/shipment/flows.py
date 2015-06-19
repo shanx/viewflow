@@ -12,6 +12,11 @@ class ShipmentFlow(Flow):
     task_cls = ShipmentTask
     lock_impl = select_for_update_lock
 
+    summary_template = """
+        Shipment {{ process.shipment.shipmentitem_set.count }} items
+        to {{ process.shipment.first_name }} {{ process.shipment.last_name }} / {{ process.shipment.city }}
+        """
+
     start = flow.Start(views.StartView) \
         .Permission('shipment.can_start_request') \
         .Next(this.split_clerk_warehouse)
@@ -21,7 +26,8 @@ class ShipmentFlow(Flow):
         .Next(this.shipment_type) \
         .Next(this.package_goods)
 
-    shipment_type = flow.View(views.ShipmentView, fields=["carrier"]) \
+    shipment_type = flow.View(views.ShipmentView, fields=["carrier"],
+                              task_description="Carrier selection") \
         .Next(this.delivery_mode) \
         .Assign(lambda p: p.created_by)
 

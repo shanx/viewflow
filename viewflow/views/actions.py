@@ -1,4 +1,3 @@
-from django.contrib import messages
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
 from django.utils.timezone import now
@@ -7,9 +6,10 @@ from django.views import generic
 
 from ..activation import STATUS
 from ..exceptions import FlowRuntimeError
+from .base import FlowManagePermissionMixin, BaseTaskActionView, process_message_user, task_message_user
 
 
-class ProcessCancelView(generic.DetailView):
+class ProcessCancelView(FlowManagePermissionMixin, generic.DetailView):
     flow_cls = None
     context_object_name = 'process'
     pk_url_kwarg = 'process_pk'
@@ -37,12 +37,12 @@ class ProcessCancelView(generic.DetailView):
         self.object = self.get_object()
 
         if self.object.status in [STATUS.DONE, STATUS.CANCELED]:
-            messages.info(request, "Process can't be cancelled")
+            process_message_user(self.request, self.object, "can't be canceled")
             return HttpResponseRedirect(self.get_success_url())
         elif '_cancel_process' in request.POST:
             self._cancel_active_tasks()
             self._cancel_process()
-            messages.info(request, 'Process cancelled')
+            process_message_user(self.request, self.object, "canceled")
             return HttpResponseRedirect(self.get_success_url())
         else:
             return self.get(request, *args, **kwargs)
@@ -57,6 +57,7 @@ class ProcessCancelView(generic.DetailView):
     def get_context_data(self, **kwargs):
         context = super(ProcessCancelView, self).get_context_data(**kwargs)
         context['active_tasks'] = self._get_task_list()
+        context['flow_cls'] = self.flow_cls
         context['uncancelable_tasks'] = self._get_uncancelable_tasks(context['active_tasks'])
         return context
 
@@ -96,3 +97,55 @@ class ProcessCancelView(generic.DetailView):
         self.object.status = STATUS.CANCELED
         self.object.finished = now()
         self.object.save()
+
+
+class TaskUndoView(BaseTaskActionView):
+    action_name = 'undo'
+
+    def can_proceed(self):
+        return self.activation.undo.can_proceed()
+
+    def perform(self):
+        self.activation.undo()
+        task_message_user(self.request, self.activation.task, "undone")
+
+
+class TaskCancelView(BaseTaskActionView):
+    action_name = 'cancel'
+
+    def can_proceed(self):
+        return self.activation.cancel.can_proceed()
+
+    def perform(self):
+        self.activation.cancel()
+        task_message_user(self.request, self.activation.task, "canceled")
+
+
+class TaskPerformView(BaseTaskActionView):
+    """
+    Non-interactive task that cancelled and need to be started manually
+    """
+
+    action_name = 'execute'
+
+    def can_proceed(self):
+        return self.activation.perform.can_proceed()
+
+    def perform(self):
+        self.activation.perform()
+        task_message_user(self.request, self.activation.task, "executed")
+
+
+class TaskActivateNextView(BaseTaskActionView):
+    """
+    Activate next task without interactove task redone
+    """
+
+    action_name = 'activate_next'
+
+    def can_proceed(self):
+        return self.activation.activate_next.can_proceed()
+
+    def perform(self):
+        self.activation.activate_next()
+        task_message_user(self.request, self.activation.task, "next tasks activated")

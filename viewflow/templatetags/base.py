@@ -1,7 +1,9 @@
 from django.db import models
+from django.contrib.auth import get_permission_codename
+from django.core.urlresolvers import reverse, NoReverseMatch
 
 
-def get_model_display_data(root_instance):
+def get_model_display_data(root_instance, user):
     """
     Returns structure with model fields and related from same app
     [(Title, [(Field Title, Value), ... ]), ...]
@@ -20,6 +22,7 @@ def get_model_display_data(root_instance):
 
     while new_objects:
         root_title, root = new_objects.pop(0)
+        root_admin_url = None
         children = []
 
         processed_objects.append(root)
@@ -29,14 +32,14 @@ def get_model_display_data(root_instance):
         for field in root._meta.fields:
             if isinstance(field, models.AutoField):
                 continue
+            elif field.auto_created:
+                continue
             elif isinstance(field, models.ForeignKey) and not field.auto_created:
                 related_id = getattr(root, field.get_attname())
                 if related_id is not None:
                     related = getattr(root, field.name)
                     if expand_required(related):
                         new_objects.append((field.verbose_name.title(), related))
-                    else:
-                        children.append((field.verbose_name.title(), related))
             else:
                 choice_display_attr = "get_{}_display".format(field.get_attname())
                 if hasattr(root, choice_display_attr):
@@ -56,6 +59,14 @@ def get_model_display_data(root_instance):
 
         # if any suitable for display children found
         if children:
-            result.append((root_title, children))
+            change_perm = get_permission_codename('change', root._meta)
+            if user.has_perm("%s.%s" % (root._meta.app_label, change_perm)):
+                admin_url_name = "admin:{}_{}_change".format(root._meta.app_label, root._meta.model_name)
+                try:
+                    root_admin_url = reverse(admin_url_name, args=(root.pk,))
+                except NoReverseMatch:
+                    pass
+
+            result.append((root_title, children, root_admin_url))
 
     return result

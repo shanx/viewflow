@@ -3,7 +3,7 @@ import traceback
 from django.db import transaction
 from django.utils.timezone import now
 
-from ..activation import context, Activation, AbstractGateActivation, STATUS
+from ..activation import context, all_leading_canceled, Activation, AbstractGateActivation, STATUS
 from ..exceptions import FlowRuntimeError
 from ..token import Token
 from . import base
@@ -17,7 +17,6 @@ class IfActivation(AbstractGateActivation):
     def calculate_next(self):
         self.condition_result = self.flow_task.condition(self.process)
 
-    @Activation.status.super()
     def activate_next(self):
         if self.condition_result:
             self.flow_task._on_true.activate(prev_activation=self, token=self.task.token)
@@ -25,7 +24,11 @@ class IfActivation(AbstractGateActivation):
             self.flow_task._on_false.activate(prev_activation=self, token=self.task.token)
 
 
-class If(base.DetailsViewMixin, base.Gateway):
+class If(base.DetailsViewMixin,
+         base.UndoViewMixin,
+         base.CancelViewMixin,
+         base.PerformViewMixin,
+         base.Gateway):
     """
     Activates one of paths based on condition
 
@@ -82,12 +85,15 @@ class SwitchActivation(AbstractGateActivation):
         if not self.next_task:
             raise FlowRuntimeError('No next task available for {}'.format(self.flow_task.name))
 
-    @Activation.status.super()
     def activate_next(self):
         self.next_task.activate(prev_activation=self, token=self.task.token)
 
 
-class Switch(base.DetailsViewMixin, base.Gateway):
+class Switch(base.DetailsViewMixin,
+             base.UndoViewMixin,
+             base.CancelViewMixin,
+             base.PerformViewMixin,
+             base.Gateway):
     """
     Activates first path with matched condition
     """
@@ -167,7 +173,7 @@ class JoinActivation(Activation):
 
         active = self.flow_cls.task_cls._default_manager \
             .filter(process=self.process, token__startswith=join_token_prefix) \
-            .exclude(status=STATUS.DONE)
+            .exclude(status__in=[STATUS.DONE, STATUS.CANCELED])
 
         return not active.exists()
 
@@ -175,6 +181,28 @@ class JoinActivation(Activation):
     def retry(self):
         if self.is_done():
             self.done.original()
+
+    @Activation.status.transition(
+        source=[STATUS.ERROR, STATUS.DONE],
+        target=STATUS.STARTED,
+        conditions=[all_leading_canceled])
+    def undo(self):
+        """
+        Undo the task
+        """
+        super(JoinActivation, self).undo.original()
+
+    @Activation.status.transition(source=[STATUS.NEW, STATUS.STARTED])
+    def perform(self):
+        if self.is_done():
+            self.done.original()
+
+    @Activation.status.transition(source=[STATUS.NEW, STATUS.STARTED], target=STATUS.CANCELED)
+    def cancel(self):
+        """
+        Cancel existing task
+        """
+        super(JoinActivation, self).cancel.original()
 
     def activate_next(self):
         """
@@ -215,6 +243,7 @@ class JoinActivation(Activation):
             activation.initialize(flow_task, task)
             activation.start()
         else:
+            task.previous.add(prev_activation.task)
             activation.initialize(flow_task, task)
 
         if activation.is_done():
@@ -223,7 +252,12 @@ class JoinActivation(Activation):
         return activation
 
 
-class Join(base.NextNodeMixin, base.DetailsViewMixin, base.Gateway):
+class Join(base.NextNodeMixin,
+           base.DetailsViewMixin,
+           base.UndoViewMixin,
+           base.CancelViewMixin,
+           base.PerformViewMixin,
+           base.Gateway):
     """
     Waits for one or all incoming links and activates next path.
 
@@ -258,7 +292,6 @@ class SplitActivation(AbstractGateActivation):
         if not self.next_tasks:
             raise FlowRuntimeError('No next task available for {}'.format(self.flow_task.name))
 
-    @Activation.status.super()
     def activate_next(self):
         token_source = Token.split_token_source(self.task.token, self.task.pk)
 
@@ -266,7 +299,11 @@ class SplitActivation(AbstractGateActivation):
             next_task.activate(prev_activation=self, token=next(token_source))
 
 
-class Split(base.DetailsViewMixin, base.Gateway):
+class Split(base.DetailsViewMixin,
+            base.UndoViewMixin,
+            base.CancelViewMixin,
+            base.PerformViewMixin,
+            base.Gateway):
     """
     Activates outgoing path in-parallel depends on per-path condition.
 

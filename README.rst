@@ -37,11 +37,15 @@ based views.
 .. image:: https://coveralls.io/repos/viewflow/viewflow/badge.png?branch=master
    :target: https://coveralls.io/r/viewflow/viewflow?branch=master
 
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+   :alt: Join the chat at https://gitter.im/viewflow/viewflow
+   :target: https://gitter.im/viewflow/viewflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge 
+
 
 Installation
 ============
 
-django-viewflow requires Python 3.3 or greater, django 1.6::
+django-viewflow requires Python 3.3 or greater, django 1.6-1.8::
 
     pip install django-viewflow
 
@@ -106,7 +110,7 @@ To make the above code work just put the following flow definition in `flows.py`
     from viewflow import flow, lock
     from viewflow.base import this, Flow
     from viewflow.contrib import celery
-    from viewflow.views import StartView, ProcessView
+    from viewflow.views import StartProcessView, ProcessView
 
     from . import models, tasks
 
@@ -115,7 +119,7 @@ To make the above code work just put the following flow definition in `flows.py`
         process_cls = models.HelloWorldProcess
         lock_impl = lock.select_for_update_lock
 
-        start = flow.Start(StartView, fields=["text"]) \
+        start = flow.Start(StartProcessView, fields=["text"]) \
             .Permission(auto_create=True) \
             .Next(this.approve)
 
@@ -177,18 +181,14 @@ Please see `FAQ <https://github.com/kmmbvnr/django-viewflow/wiki/Pro-FAQ>`_ for 
 Latest changelog
 ================
 
-0.8.0 - 2014-12-02
+0.9.0 - 2015-06-15
 ------------------
 
-* Development of viewform and karenina projects no longer opensourced
-* Refactor fsm from task model to activation classes
-* Generic admin actions for changing tasks state
-* Support for view tasks unassign/reassign
-* Allow tasks undo and cancel
-* Store error information for tasks
+* Django 1.8 support
+* Better inbox/queue views
+* Improve undo/cancel tasks behaviour
+* Allow to specify custom undo handlers methods
+* Allow to use flow class methods as flow task functions
+* Allow to list task state change handles in template
+* *PRO ONLY* New Material Designed Frontend for the Flow
 
-Roadmap
-=======
-
-* in 0.9.0 at January we going to extend documentation and improve task undo behaviour
-* 1.0.0 LTS estimated at March 2015 would have lifetime support same as django 1.6

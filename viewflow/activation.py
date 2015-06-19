@@ -95,7 +95,6 @@ class Activation(object):
        digraph status {
            UNRIPE;
            NEW -> CANCELED [label="cancel"];
-           DONE -> DONE [label="activate_next"];
            DONE -> NEW [label="undo"];
            {rank = min;NEW}
        }
@@ -124,6 +123,9 @@ class Activation(object):
             return self.task.status
         return STATUS.UNRIPE
 
+    def get_available_transtions(self):
+        return self.__class__.status.get_available_transtions(self)
+
     @status.transition(source=STATUS.UNRIPE)
     def initialize(self, flow_task, task=None):
         """
@@ -135,21 +137,23 @@ class Activation(object):
         self.flow_task, self.flow_cls = flow_task, flow_task.flow_cls
 
         self.process = self.flow_cls.process_cls._default_manager.get(flow_cls=self.flow_cls, pk=task.process_id)
-        self.task = task
-
-    @status.transition(source=STATUS.DONE)
-    def activate_next(self):
-        """
-        Activates next connected flow tasks
-        """
-        raise NotImplementedError
+        self.task = task    
 
     @status.transition(source=STATUS.DONE, target=STATUS.NEW, conditions=[all_leading_canceled])
     def undo(self):
         """
         Undo the task
+
+        If flow class have `[task_name]_undo(self, activation)` method it would be called
         """
+        self.task.finished = None
         self.task.save()
+
+        # call custom undo handler
+        handler_name = '{}_undo'.format(self.flow_task.name)
+        handler = getattr(self.flow_cls.instance, handler_name, None)
+        if handler:
+            handler(self)
 
     @status.transition(source=STATUS.NEW, target=STATUS.CANCELED)
     def cancel(self):
@@ -175,7 +179,6 @@ class StartActivation(Activation):
 
        digraph status {
            UNRIPE;
-           DONE -> DONE [label="activate_next"];
            DONE -> NEW [label="undo"];
            NEW -> CANCELED [label="cancel"];
            NEW -> PREPARED [label="prepare"]
@@ -189,10 +192,10 @@ class StartActivation(Activation):
         self.flow_task, self.flow_cls = flow_task, flow_task.flow_cls
 
         if task:
-            self.process, self.task = task.process, task
+            self.process, self.task = task.flow_process, task
         else:
             self.process = self.flow_cls.process_cls(flow_cls=self.flow_cls)
-            self.task = self.flow_cls.task_cls(process=self.process, flow_task=self.flow_task)
+            self.task = self.flow_cls.task_cls(flow_task=self.flow_task)
 
     @Activation.status.transition(source=STATUS.NEW, target=STATUS.PREPARED)
     def prepare(self):
@@ -231,14 +234,14 @@ class StartActivation(Activation):
 
         self.activate_next()
 
-    @Activation.status.super()
+    @Activation.status.transition(source=STATUS.DONE)
     def activate_next(self):
         """
         Activate all outgoing edges.
         """
         self.flow_task._next.activate(prev_activation=self, token=self.task.token)
 
-    @Activation.status.super()
+    @Activation.status.transition(source=STATUS.DONE, target=STATUS.CANCELED, conditions=[all_leading_canceled])
     def undo(self):
         """
         Undo the task
@@ -261,10 +264,10 @@ class StartViewActivation(Activation):
         self.flow_task, self.flow_cls = flow_task, flow_task.flow_cls
 
         if task:
-            self.process, self.task = task.process, task
+            self.process, self.task = task.flow_process, task
         else:
             self.process = self.flow_cls.process_cls(flow_cls=self.flow_cls)
-            self.task = self.flow_cls.task_cls(process=self.process, flow_task=self.flow_task)
+            self.task = self.flow_cls.task_cls(flow_task=self.flow_task)
 
     @Activation.status.transition(source=STATUS.NEW, target=STATUS.PREPARED)
     def prepare(self):
@@ -303,12 +306,22 @@ class StartViewActivation(Activation):
 
         self.activate_next()
 
-    @Activation.status.super()
+    @Activation.status.transition(source=STATUS.DONE)
     def activate_next(self):
         """
         Activate all outgoing edges.
         """
         self.flow_task._next.activate(prev_activation=self, token=self.task.token)
+
+    @Activation.status.transition(source=STATUS.DONE, target=STATUS.CANCELED, conditions=[all_leading_canceled])
+    def undo(self):
+        """
+        Undo the task
+        """
+        self.process.status = STATUS.CANCELED
+        self.process.finished = now()
+        self.process.save()
+        super(StartViewActivation, self).undo.original()
 
 
 class ViewActivation(Activation):
@@ -319,7 +332,7 @@ class ViewActivation(Activation):
 
        digraph status {
            UNRIPE;
-           DONE -> DONE [label="activate_next"];
+           DONE -> DONE [label="activate_next"]
            DONE -> NEW [label="undo"];
            NEW -> ASSIGNED [label="assign"];
            ASSIGNED -> NEW [label="unassign"];
@@ -386,6 +399,14 @@ class ViewActivation(Activation):
         self.activate_next()
 
     @Activation.status.super()
+    def undo(self):
+        """
+        Undo the task
+        """
+        self.task.owner = None
+        super(ViewActivation, self).undo.original()
+
+    @Activation.status.transition(source=STATUS.DONE)
     def activate_next(self):
         """
         Activate all outgoing edges.
@@ -424,7 +445,6 @@ class AbstractGateActivation(Activation):
        digraph status {
            UNRIPE;
            NEW -> CANCELED [label="cancel"];
-           DONE -> DONE [label="activate_next"];
            DONE -> NEW [label="undo"];
            ERROR -> NEW [label="undo"];
            NEW -> DONE [label="perform"];
@@ -439,6 +459,12 @@ class AbstractGateActivation(Activation):
     def calculate_next(self):
         """
         Calculate next tasks for activation
+        """
+        raise NotImplementedError
+
+    def activate_next(self):
+        """
+        Activate next tasks
         """
         raise NotImplementedError
 
@@ -654,7 +680,7 @@ class AbstractJobActivation(Activation):
         """
         super(AbstractJobActivation, self).cancel.original()
 
-    @Activation.status.super()
+    @Activation.status.transition(source=STATUS.DONE)
     def activate_next(self):
         """
         Activate all outgoing edges.
@@ -697,7 +723,6 @@ class EndActivation(Activation):
        digraph status {
            UNRIPE;
            NEW -> CANCELED [label="cancel"];
-           DONE -> DONE [label="activate_next"];
            DONE -> NEW [label="undo"];
            NEW -> DONE [label="perform"];
            {rank = min;NEW}

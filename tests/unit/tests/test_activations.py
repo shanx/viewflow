@@ -43,6 +43,7 @@ class NextTaskStub(object):
 class FlowStub(object):
     process_cls = ProcessStub
     task_cls = TaskStub
+    instance = None
 
 
 class TestGateAcitation(activation.AbstractGateActivation):
@@ -89,7 +90,6 @@ class TestActivations(TestCase):
         act.prepare()
         act.done()
         act.undo()
-        act.cancel()
 
     def test_startviewactivation_lifecycle(self):
         act = activation.StartViewActivation()
@@ -98,7 +98,6 @@ class TestActivations(TestCase):
         act.prepare()
         act.done()
         act.undo()
-        act.cancel()
 
     def test_viewactivation_lifecycle(self):
         flow_task = self.init(flow.View(lambda _: None))

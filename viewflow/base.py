@@ -137,17 +137,20 @@ class FlowMetaClass(type):
                 .rstrip('Flow')
 
         # view process permission
-        if hasattr(new_class, 'process_cls'):
-            process_options = new_class.process_cls._meta
-            if hasattr(process_options, 'default_permissions'):
-                # django 1.7
-                if 'view' not in process_options.default_permissions:
-                    process_options.default_permissions += ('view', )
-            else:
-                # django 1.6
-                permission = ('view_{}'.format(process_options.model_name),
-                              'View {}'.format(process_options.model_name))
+        process_options = new_class.process_cls._meta
+        if hasattr(process_options, 'default_permissions'):
+            # django 1.7
+            for permission in ('view', 'manage'):
+                if permission not in process_options.default_permissions:
+                    process_options.default_permissions += (permission,)
+        else:
+            # django 1.6
+            permissions = (('view_{}'.format(process_options.model_name),
+                            'View {}'.format(process_options.model_name)),
+                           ('manage_{}'.format(process_options.model_name),
+                            'Manage {}'.format(process_options.model_name)))
 
+            for permission in permissions:
                 if permission not in process_options.permissions:
                     process_options.permissions.append(permission)
 
@@ -176,6 +179,8 @@ class Flow(with_metaclass(FlowMetaClass)):
     process_title = None
     process_description = None
 
+    summary_template = "{{ flow_cls.process_title }} - {{ process.status }}"
+
     @property
     def namespace(self):
         return "{}/{}".format(self._meta.app_label, self._meta.flow_label)
@@ -190,6 +195,16 @@ class Flow(with_metaclass(FlowMetaClass)):
             node_urls += node.urls()
 
         return url('^', include(node_urls))
+
+    @property
+    def view_permission_name(self):
+        opts = self.process_cls._meta
+        return "{}.view_{}".format(opts.app_label, opts.model_name)
+
+    @property
+    def manage_permission_name(self):
+        opts = self.process_cls._meta
+        return "{}.view_{}".format(opts.app_label, opts.model_name)
 
     def __str__(self):
         return self.process_title

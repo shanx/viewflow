@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name='django-viewflow',
-    version='0.8.0',
+    version='0.9.0',
     author='Mikhail Podgurskiy',
     author_email='kmmbvnr@gmail.com',
     description='Reusable workflow library for django',
@@ -29,6 +29,7 @@ setup(
         'Django>=1.6',
         'singledispatch>=3.0',
         'django-fsm>=2.0',
+        'django-filter>=0.10.0',
         'mock',
         # viewflow.test
         'django-webtest',
